@@ -31,7 +31,9 @@ matches the one in the path:
 allow read, write: if request.auth != null && request.auth.uid == userId;
 ```
 
-A second account signing in sees its own empty bus, not the first account's.
+A new account starts with its own sample bookings, written once when it is created.
+A second account therefore sees its own bus, never the first account's: different
+passengers, different seats, different takings.
 
 ## Running it
 
@@ -56,8 +58,21 @@ your own Firebase project to run it:
 
 ![Login](screenshots/login.png)
 
+The login screen, carrying the app's own name. Both fields are validated before anything is
+sent, and Firebase's error codes are turned into sentences a person can read.
+
 ![My data in Firestore](screenshots/console.png)
+
+The `bookings` collection in the Firestore console, under `users/{my uid}/`. Five documents,
+each named after the seat it belongs to, with the fields of seat 1 open beside them.
 
 ![Live update](screenshots/live.png)
 
+Seat 12 was written straight into Firestore from outside the app. It appeared in the running
+app by itself, with no restart and nothing tapped, and the totals moved to five seats sold
+and 15000 RWF.
+
 ![Second account sees nothing of mine](screenshots/denied.png)
+
+A second account signed in on the same emulator. It shows three seats and 9000 RWF, its own
+sample data, and shares no passenger name with the account above.
