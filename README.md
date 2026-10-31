@@ -40,8 +40,17 @@ flutter pub get
 flutter run
 ```
 
-Needs `android/app/google-services.json` for its own Firebase project, Email/Password
-sign-in enabled, and the rules above published.
+### Firebase setup
+
+`android/app/google-services.json` is deliberately **not** in this repository, so you need
+your own Firebase project to run it:
+
+1. Create a project at `console.firebase.google.com`, Analytics off.
+2. Add an Android app with the package name `com.example.bus_booking`, download
+   `google-services.json`, and put it in `android/app/`.
+3. Authentication: enable the Email/Password provider.
+4. Firestore Database: create it in **production mode**, then paste `firestore.rules`
+   into the Rules tab and publish.
 
 ## Screenshots
 
