@@ -156,24 +156,51 @@ class _SeatTile extends StatelessWidget {
   }
 }
 
-Future<void> _openForm(BuildContext context,
-    {required int seat, Booking? existing}) async {
-  final formKey = GlobalKey<FormState>();
-  final nameController = TextEditingController(text: existing?.name ?? '');
-  final cashController =
-      TextEditingController(text: existing == null ? '' : '${existing.cash}');
+/// The dialog owns its controllers and disposes them itself, when the route
+/// is removed. Disposing them straight after `showDialog` returns throws,
+/// because the fields are still on screen during the closing animation.
+class _BookingDialog extends StatefulWidget {
+  const _BookingDialog({required this.seat, this.existing});
 
-  final saved = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(existing == null ? 'Book seat $seat' : 'Edit seat $seat'),
+  final int seat;
+  final Booking? existing;
+
+  @override
+  State<_BookingDialog> createState() => _BookingDialogState();
+}
+
+class _BookingDialogState extends State<_BookingDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _cash;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.existing?.name ?? '');
+    _cash = TextEditingController(
+        text: widget.existing == null ? '' : '${widget.existing!.cash}');
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _cash.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editing = widget.existing != null;
+    return AlertDialog(
+      title: Text(editing ? 'Edit seat ${widget.seat}' : 'Book seat ${widget.seat}'),
       content: Form(
-        key: formKey,
+        key: _formKey,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextFormField(
-              controller: nameController,
+              controller: _name,
               textCapitalization: TextCapitalization.words,
               decoration: const InputDecoration(labelText: 'Passenger name'),
               validator: (v) =>
@@ -181,7 +208,7 @@ Future<void> _openForm(BuildContext context,
             ),
             const SizedBox(height: 12),
             TextFormField(
-              controller: cashController,
+              controller: _cash,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                   labelText: 'Cash given', suffixText: 'RWF'),
@@ -197,46 +224,53 @@ Future<void> _openForm(BuildContext context,
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Cancel')),
         TextButton(
           onPressed: () {
-            if (formKey.currentState!.validate()) {
-              Navigator.pop(dialogContext, true);
+            if (_formKey.currentState!.validate()) {
+              Navigator.pop(context, (
+                name: _name.text.trim(),
+                cash: int.parse(_cash.text.trim()),
+              ));
             }
           },
-          child: Text(existing == null ? 'Book' : 'Save'),
+          child: Text(editing ? 'Save' : 'Book'),
         ),
       ],
-    ),
+    );
+  }
+}
+
+Future<void> _openForm(BuildContext context,
+    {required int seat, Booking? existing}) async {
+  final result = await showDialog<({String name, int cash})>(
+    context: context,
+    builder: (_) => _BookingDialog(seat: seat, existing: existing),
   );
-
-  final name = nameController.text.trim();
-  final cash = int.tryParse(cashController.text.trim()) ?? 0;
-  nameController.dispose();
-  cashController.dispose();
-
-  if (saved != true) return;
+  if (result == null) return;
 
   try {
     if (existing == null) {
       // The seat number is the document id, so one seat can only be sold once.
       await myBookings().doc('$seat').set({
         'seat': seat,
-        'name': name,
-        'cash': cash,
+        'name': result.name,
+        'cash': result.cash,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } else {
       await myBookings().doc(existing.id).update({
         'seat': seat,
-        'name': name,
-        'cash': cash,
+        'name': result.name,
+        'cash': result.cash,
       });
     }
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Seat $seat: ${describeChange(cash - fare)}')),
+        SnackBar(
+            content:
+                Text('Seat $seat: ${describeChange(result.cash - fare)}')),
       );
     }
   } catch (e) {
@@ -344,71 +378,98 @@ class WaitlistTab extends StatelessWidget {
   }
 }
 
+class _WaitlistDialog extends StatefulWidget {
+  const _WaitlistDialog({this.existing});
+
+  final WaitlistEntry? existing;
+
+  @override
+  State<_WaitlistDialog> createState() => _WaitlistDialogState();
+}
+
+class _WaitlistDialogState extends State<_WaitlistDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late bool _priority;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.existing?.name ?? '');
+    _priority = widget.existing?.priority ?? false;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editing = widget.existing != null;
+    return AlertDialog(
+      title: Text(editing ? 'Edit waiting passenger' : 'Add to waitlist'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _name,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Name'),
+              validator: (v) =>
+                  (v ?? '').trim().isEmpty ? 'Enter a name' : null,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Priority'),
+              value: _priority,
+              onChanged: (value) => setState(() => _priority = value),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        TextButton(
+          onPressed: () {
+            if (_formKey.currentState!.validate()) {
+              Navigator.pop(context, (
+                name: _name.text.trim(),
+                priority: _priority,
+              ));
+            }
+          },
+          child: Text(editing ? 'Save' : 'Add'),
+        ),
+      ],
+    );
+  }
+}
+
 Future<void> _openWaitlistForm(BuildContext context,
     {WaitlistEntry? existing}) async {
-  final formKey = GlobalKey<FormState>();
-  final nameController = TextEditingController(text: existing?.name ?? '');
-  var priority = existing?.priority ?? false;
-
-  final saved = await showDialog<bool>(
+  final result = await showDialog<({String name, bool priority})>(
     context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (dialogContext, setDialogState) => AlertDialog(
-        title: Text(existing == null ? 'Add to waitlist' : 'Edit waiting passenger'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: nameController,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Name'),
-                validator: (v) =>
-                    (v ?? '').trim().isEmpty ? 'Enter a name' : null,
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Priority'),
-                value: priority,
-                onChanged: (value) =>
-                    setDialogState(() => priority = value),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel')),
-          TextButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(dialogContext, true);
-              }
-            },
-            child: Text(existing == null ? 'Add' : 'Save'),
-          ),
-        ],
-      ),
-    ),
+    builder: (_) => _WaitlistDialog(existing: existing),
   );
-
-  final name = nameController.text.trim();
-  nameController.dispose();
-  if (saved != true) return;
+  if (result == null) return;
 
   try {
     if (existing == null) {
       await myWaitlist().add({
-        'name': name,
-        'priority': priority,
+        'name': result.name,
+        'priority': result.priority,
         'joinedAt': FieldValue.serverTimestamp(),
       });
     } else {
       await myWaitlist().doc(existing.id).update({
-        'name': name,
-        'priority': priority,
+        'name': result.name,
+        'priority': result.priority,
       });
     }
   } catch (e) {
